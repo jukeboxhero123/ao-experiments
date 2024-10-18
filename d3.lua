@@ -113,8 +113,8 @@ local storeSourceCode = storeSourceCode or [=[
     function initialize()
         DB:exec[[
             CREATE TABLE objects (
-                id VARCHAR(255) PRIMARY KEY, COLUMN_DEF
-            ) STRICT;
+                id VARCHAR(255) PRIMARY KEY CHECK(typeof(id) = 'text'), COLUMN_DEF
+            );
         ]]
         isInitialized = true
     end
@@ -137,13 +137,13 @@ local function capitalizeFirstLetter(str)
     return str:sub(1, 1):upper() .. str:sub(2)  -- Capitalize first letter and append the rest
 end
 
-local function getSQLType(value)
+local function getSQLType(value, name)
     if value == "string" then
-        return "VARCHAR(255)"
+        return "VARCHAR(255) CHECK(typeof(" .. name .. ") = 'text')"
     elseif value == "number" then
-        return "INT"
+        return "INT CHECK(typeof(" .. name .. ") = 'integer')"
     else
-        return "TEXT"
+        return "TEXT CHECK(typeof(" .. name .. ") = 'text')"
     end
 end
 
@@ -170,8 +170,6 @@ local function getSourceCode(fields)
     local bindParamsQuery = ""
     local sqlQuery = ""
     local columnDef = ""
-
-    print(fields);
 
     for index, value in ipairs(fields) do
         columnList = columnList .. value.name
@@ -201,7 +199,7 @@ local function getSourceCode(fields)
             sqlQuery = sqlQuery .. ";"
         end
 
-        columnDef = columnDef .. value.name .. " " .. getSQLType(value.type)
+        columnDef = columnDef .. value.name .. " " .. getSQLType(value.type, value.name)
         if index < #fields then
             columnDef = columnDef .. ", "
         end

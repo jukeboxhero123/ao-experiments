@@ -112,8 +112,8 @@ end)
 function initialize()
     DB:exec[[
         CREATE TABLE objects (
-            id VARCHAR(255) PRIMARY KEY, COLUMN_DEF
-        ) STRICT;
+            id VARCHAR(255) PRIMARY KEY CHECK(typeof(id) = 'text'), COLUMN_DEF
+        );
     ]]
     isInitialized = true
 end
