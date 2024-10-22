@@ -38,7 +38,7 @@ function getEdge(queryParams)
     if not stmt then
         error("Failed to prepare SQL statement: " .. DB:errmsg())
     end
-
+    print(queryParams)
     stmt:bind_names({
         id = queryParams.Id or nil,
         toId = queryParams.ToId or nil,
@@ -55,8 +55,41 @@ function getEdge(queryParams)
     return result
 end
 
+
+local Direction = {
+    IN = "In",
+    OUT = "Out"
+}
+
+local function isValidEdge(newEdge)
+    -- Validate To Node
+    Send({ Target = newEdge.ToIdProcess, Action = 'CheckValidEdge', Direction = Direction.IN, Label = newEdge.Label, ConnectedType = newEdge.FromIdProcess })
+    local toNodeResult = Receive({ From = newEdge.ToIdProcess }) --, Action = "Check-Valid-Edge-Result" })
+    print(toNodeResult)
+    if toNodeResult.Data == "Fail" then
+        return { isValid = false, reason = toNodeResult.Reason }
+    end
+
+    -- Validate From Node
+    Send({ Target = newEdge.FromIdProcess, Action = 'CheckValidEdge', Direction = Direction.OUT, Label = newEdge.Label, ConnectedType = newEdge.ToIdProcess })
+    local fromNodeResult = Receive({ From = newEdge.FromIdProcess }) --, Action = "Check-Valid-Edge-Result" })
+    if fromNodeResult.Data == "Fail" then
+        return { isValid = false, reason = fromNodeResult.Reason }
+    end
+
+    return { isValid = true }
+end
+
 Handlers.add('upsert', 'Upsert', function (msg)
     local upsertFields = json.decode(msg.Tags.UpsertFields or "{}")
+    
+    local isValidResult = isValidEdge(upsertFields)
+    print(isValidResult)
+    if not isValidResult.isValid then
+        msg.reply({ Action = 'Upsert-Edge-Result', Data = "Fail", Reason = isValidResult.reason })
+        return
+    end
+
     local stmt = DB:prepare [[
         REPLACE INTO edges (id, toId, toIdProcess, fromId, fromIdProcess, label)
         VALUES (:id ,:toId, :toIdProcess, :fromId, :fromIdProcess, :label);
@@ -82,9 +115,11 @@ Handlers.add('upsert', 'Upsert', function (msg)
 
     print(result)
     if result == sqlite3.DONE then
-        msg.reply({ Result = "Upsert-Success" })
+        print('SUCCESS')
+        msg.reply({ Action = 'Upsert-Edge-Result', Data = "Success" })
     else
-        msg.reply({ Result = "Upsert-Fail" })
+        print('FAIL')
+        msg.reply({ Action = 'Upsert-Edge-Result', Data = "Fail" })
     end
 end)
 

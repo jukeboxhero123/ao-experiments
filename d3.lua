@@ -6,6 +6,8 @@ local storeSourceCode = storeSourceCode or [=[
     
     DB = DB or sqlite3.open_memory()
     
+    validEdgeWhitelist = validEdgeWhitelist or {}
+    
     local function uuid()
         local template = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'
         return string.gsub(template, '[xy]', function(c)
@@ -77,7 +79,41 @@ local storeSourceCode = storeSourceCode or [=[
             Result = 'Get-Result-Success'
         })
     end)
-
+    
+    local Direction = {
+        IN = "In",
+        OUT = "Out"
+    }
+    
+    Handlers.add('addValidEdge', 'AddValidEdge', function (msg)
+        if msg.Direction ~= nil and msg.Label ~= nil and msg.ConnectedType ~= nil then
+            table.insert(validEdgeWhitelist, { direction = msg.Direction, label = msg.Label, connectedType = msg.ConnectedType })
+            msg.reply({ Action = "Add-Valid-Edge-Result", Data = "Success" })
+        else
+            msg.reply({ Action = "Add-Valid-Edge-Result", Data = "Fail" })
+        end
+    end)
+    
+    Handlers.add('checkValidEdge', 'CheckValidEdge', function (msg)
+        local direction = msg.Direction
+        local label = msg.Label
+        local connectedType = msg.ConnectedType
+    
+        -- Valid if whitelist is empty
+        if #validEdgeWhitelist == 0 then
+            msg.reply({ Action = "Check-Valid-Edge-Result", Data = "Success" })
+            return
+        end
+    
+        for index, edge in ipairs(validEdgeWhitelist) do
+            if direction == edge.direction and label == edge.label and connectedType == edge.connectedType then
+                msg.reply({ Action = "Check-Valid-Edge-Result", Data = "Success" })
+                return
+            end
+        end
+        msg.reply({ Action = "Check-Valid-Edge-Result", Data = "Fail", Reason = label .. " edge connecting to a " .. connectedType .. " node is not allowed to come " .. direction .. " a object of type " .. ao.id .. "."  })
+    end)
+    
     Handlers.add('getManyById', 'GetManyById', function (msg)
         local ids = json.decode(msg.Tags.ObjectIds or "[]")
     
@@ -121,7 +157,7 @@ local storeSourceCode = storeSourceCode or [=[
         
     if not isInitialized then
         initialize()
-    end    
+    end 
 ]=]
 
 json = require('json')
@@ -318,12 +354,12 @@ Handlers.add('addEdge', 'AddEdge', function (msg)
         ["Label"] = msg.Tags.Label
     }
     Send({ Target = edgeProcessId, Action = 'Upsert', UpsertFields = json.encode(upsertFields) })
-    local result = Receive({ From = edgeProcessId }) -- Need to be more specific about what type of message is being received
+    local result = Receive({ From = edgeProcessId, Action = 'Upsert-Edge-Result' }) -- Need to be more specific about what type of message is being received
     print(result)
-    if result.Tags.Result == "Upsert-Success" then
-        msg.reply({ Result = "Sucess" })
+    if result.Data == "Success" then
+        msg.reply({ Action = "Add-Edge-Result", Data = "Sucess" })
     else
-        msg.reply({ Result = "Fail" })
+        msg.reply({ Action = "Add-Edge-Result", Data = "Fail" })
     end
 end)
 
@@ -368,12 +404,12 @@ local Direction = {
 Handlers.add('getConnections', 'GetConnections', function (msg)
     local edgeQueryParams = { Label = msg.Label }
     if Direction.IN == msg.Direction then
-        edgeQueryParams['toId'] = msg['Object-Id']
+        edgeQueryParams['ToId'] = msg['Object-Id']
     else 
-        edgeQueryParams['fromId'] = msg['Object-Id']
+        edgeQueryParams['FromId'] = msg['Object-Id']
     end
     local edges = queryEdges(json.encode(edgeQueryParams))
-
+    print(edges)
     local objectIdsByProcess = {}
     for index, value in ipairs(edges) do
         if Direction.IN == msg.Direction then
@@ -390,7 +426,7 @@ Handlers.add('getConnections', 'GetConnections', function (msg)
             end
         end
     end
-
+    print(objectIdsByProcess)
     local objects = {}
     for processId, objectIds in pairs(objectIdsByProcess) do
         local result = queryManyObject(processId, objectIds)

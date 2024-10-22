@@ -5,6 +5,8 @@ local json = require('json')
 
 DB = DB or sqlite3.open_memory()
 
+validEdgeWhitelist = validEdgeWhitelist or {}
+
 local function uuid()
     local template = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'
     return string.gsub(template, '[xy]', function(c)
@@ -75,6 +77,40 @@ Handlers.add('get', 'Get', function (msg)
         Data = json.encode(result),
         Result = 'Get-Result-Success'
     })
+end)
+
+local Direction = {
+    IN = "In",
+    OUT = "Out"
+}
+
+Handlers.add('addValidEdge', 'AddValidEdge', function (msg)
+    if msg.Direction ~= nil and msg.Label ~= nil and msg.ConnectedType ~= nil then
+        table.insert(validEdgeWhitelist, { direction = msg.Direction, label = msg.Label, connectedType = msg.ConnectedType })
+        msg.reply({ Action = "Add-Valid-Edge-Result", Data = "Success" })
+    else
+        msg.reply({ Action = "Add-Valid-Edge-Result", Data = "Fail" })
+    end
+end)
+
+Handlers.add('checkValidEdge', 'CheckValidEdge', function (msg)
+    local direction = msg.Direction
+    local label = msg.Label
+    local connectedType = msg.ConnectedType
+
+    -- Valid if whitelist is empty
+    if #validEdgeWhitelist == 0 then
+        msg.reply({ Action = "Check-Valid-Edge-Result", Data = "Success" })
+        return
+    end
+
+    for index, edge in ipairs(validEdgeWhitelist) do
+        if direction == edge.direction and label == edge.label and connectedType == edge.connectedType then
+            msg.reply({ Action = "Check-Valid-Edge-Result", Data = "Success" })
+            return
+        end
+    end
+    msg.reply({ Action = "Check-Valid-Edge-Result", Data = "Fail", Reason = label .. " edge connecting to a " .. connectedType .. " node is not allowed to come " .. direction .. " a object of type " .. ao.id .. "."  })
 end)
 
 Handlers.add('getManyById', 'GetManyById', function (msg)
